@@ -31,6 +31,17 @@ local maxima are combined in the final result.
 The final version does the calculation in 0.69sec. This is an improvement
 of 100 million percent compared to the 8 days!
 
+Can the code be improved even further?
+    In terms of single thread speed the code is pretty much at the limit
+    of what is doable in c++ when staying with ordinary instructions
+    and a random number generation that passes the necessary statistical
+    tests. With multi-threading there is still a lot to gain though. 
+    With clever code that could run on many GPU threads there are still
+    multiple orders of magnitude to gain in terms of speed. However as
+    I am not a just a mathematician, with enough coding experience to 
+    be dangerous, I don't have the knowledge and experience to write
+    GPU instructions and leave it up to others to do so.
+
 The github repository contains all improvements including what has been
 changed between versions.
 https://github.com/samsouum/graveler-soft-lock-picking/tree/main
