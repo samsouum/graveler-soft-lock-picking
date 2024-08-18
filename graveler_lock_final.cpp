@@ -42,6 +42,12 @@ Can the code be improved even further?
     be dangerous, I don't have the knowledge and experience to write
     GPU instructions and leave it up to others to do so.
 
+For anyone running the code on their device:
+    - Remember to use the O3 or Ofast optimization flags.
+    - If there is a problem with the __m256i data type try to run
+      the slightly less efficient version 9 which should work on
+      every device.
+
 The github repository contains all improvements including what has been
 changed between versions.
 https://github.com/samsouum/graveler-soft-lock-picking/tree/main
