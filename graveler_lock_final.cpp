@@ -38,9 +38,16 @@ Can the code be improved even further?
     tests. With multi-threading there is still a lot to gain though. 
     With clever code that could run on many GPU threads there are still
     multiple orders of magnitude to gain in terms of speed. However as
-    I am not a just a mathematician, with enough coding experience to 
+    I am just a mathematician, with enough coding experience to 
     be dangerous, I don't have the knowledge and experience to write
-    GPU instructions and leave it up to others to do so.
+    GPU instructions and leave it up to others to do so. It is noteworthy
+    for anyone trying this to keep the number of RNG calls per thread
+    in mind. If the value gets low the xorshift algorithm will no longer
+    pass the needed statistical tests and may cause mathematically
+    unprobable results. In this case I suggest using the almost as
+    performant PCG algorithm
+https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/.
+    Good luck!
 
 For anyone running the code on their device:
     - Remember to use the O3 or Ofast optimization flags.
