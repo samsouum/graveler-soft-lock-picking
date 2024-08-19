@@ -28,7 +28,7 @@ in the article https://arxiv.org/pdf/1611.07612. The 1 billion simulations
 are distributed on the threads available (on my ordinary laptop 12) and
 local maxima are combined in the final result.
 
-The final version does the calculation in 0.69sec. This is an improvement
+The final version does the calculation in 0.52sec. This is an improvement
 of 100 million percent compared to the 8 days!
 
 Can the code be improved even further?
@@ -51,9 +51,10 @@ https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/.
 
 For anyone running the code on their device:
     - Remember to use the O3 or Ofast optimization flags.
-    - If there is a problem with the __m256i data type try to run
-      the slightly less efficient version 9 which should work on
-      every device.
+    - If there is a problem with the __m256i data type your CPU
+      probably doesn't support AVX's. In this case you can try to
+      run the slightly less efficient version 9 which should work
+      on every device.
 
 The github repository contains all improvements including what has been
 changed between versions.
@@ -84,51 +85,59 @@ private:
     __m256i state;
 };
 
-__m256i inline clear_bottom_25_bits(__m256i v) {
-    return _mm256_and_si256(v, _mm256_set_epi64x(0xFFFFFFFFFFE00000ULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL));
+__m256i inline popcnt_epi8_mask(__m256i v) {
+    __m256i lookup = _mm256_setr_epi8 (0 , 1 , 1 , 2 , 1 , 2 , 2 , 3 , 1 , 2 ,
+    2 , 3 , 2 , 3 , 3 , 4 , 0 , 1 , 1 , 2 , 1 , 2 , 2 , 3 ,
+    1 , 2 , 2 , 3 , 2 , 3 , 3 , 4) ;
+    __m256i low_mask = _mm256_set1_epi8(0x0f);
+    __m256i lo = _mm256_and_si256(v, low_mask) ;
+    __m256i hi = _mm256_and_si256(_mm256_srli_epi32(v, 4), _mm256_set1_epi64x(0x070F));
+    __m256i popcnt1 = _mm256_shuffle_epi8(lookup, lo);
+    __m256i popcnt2 = _mm256_shuffle_epi8(lookup, hi);
+    return _mm256_add_epi8(popcnt1, popcnt2);
 }
 
-__m256i popcnt_epi64(__m256i v) {
+__m256i inline popcnt_epi8(__m256i v) {
     __m256i lookup = _mm256_setr_epi8 (0 , 1 , 1 , 2 , 1 , 2 , 2 , 3 , 1 , 2 ,
     2 , 3 , 2 , 3 , 3 , 4 , 0 , 1 , 1 , 2 , 1 , 2 , 2 , 3 ,
     1 , 2 , 2 , 3 , 2 , 3 , 3 , 4) ;
     __m256i low_mask = _mm256_set1_epi8(0x0f);
     __m256i lo = _mm256_and_si256(v,low_mask ) ;
     __m256i hi = _mm256_and_si256(_mm256_srli_epi32(v, 4), low_mask);
-    __m256i popcnt1 = _mm256_shuffle_epi8 (lookup, lo);
-    __m256i popcnt2 = _mm256_shuffle_epi8 (lookup, hi);
-    __m256i total = _mm256_add_epi8 (popcnt1, popcnt2);
-    return _mm256_sad_epu8 (total, _mm256_setzero_si256());
+    __m256i popcnt1 = _mm256_shuffle_epi8(lookup, lo);
+    __m256i popcnt2 = _mm256_shuffle_epi8(lookup, hi);
+    return _mm256_add_epi8(popcnt1, popcnt2);
 }
 
-int inline popcnt256(__m256i v) {
-    __m256i popcnt = popcnt_epi64(v);
-    uint64_t result[4];
-    _mm256_storeu_si256((__m256i*)result, popcnt);
-    return result[0] + result[1] + result[2] + result[3];
-}
-
-void thread_action(long long n, std::atomic<int>& max_value, __m256i seed){
-    Xorshift256 gen(seed); // seed for the random number generator
+void thread_action(int n, std::atomic<int>& max_value, __m256i seed){
+    Xorshift256 gen(seed);
     int local_max = 0;
-    for (long long i = 0; i < n; ++i) {
-        int value = popcnt256(clear_bottom_25_bits(_mm256_and_si256(gen.next(), gen.next())));
-        //local_max -= (local_max - value) & ((local_max - value) >> 31);
-        local_max = (value > local_max) ? value : local_max;
+    __m256i local_max_epi8 = _mm256_setzero_si256();
+    for (int i = 0; i < n; ++i) {
+        __m256i total = popcnt_epi8_mask(_mm256_and_si256(gen.next(), gen.next()));
+        for (int j = 0; j < 3; ++j) {
+            total = _mm256_add_epi8(popcnt_epi8(_mm256_and_si256(gen.next(), gen.next())), total);
+        }
+        total = _mm256_sad_epu8(total, _mm256_setzero_si256());
+        local_max_epi8 = _mm256_max_epu8(local_max_epi8, total);
     }
-    if (local_max > max_value){
-        max_value = local_max;
+    uint64_t result[4];
+    _mm256_storeu_si256((__m256i*)result, local_max_epi8);
+    for (int i = 1; i < 4; ++i){
+        result[0] = (result[i] > result[0]) ? result[i] : result[0];
+    }
+    if (result[0] > max_value){
+        max_value = result[0];
     }
 }
 
 int main() {
     long long n = 1e9;
-    //int k = 231; // 231 = 64 * 4 - 25
 
     int num_threads = std::thread::hardware_concurrency();
     std::vector<std::thread> threads;
     std::atomic<int> max_value(0);
-    long long chunk_size = n / num_threads;
+    int chunk_size = n / num_threads / 4;
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
