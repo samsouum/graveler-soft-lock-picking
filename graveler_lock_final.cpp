@@ -29,7 +29,7 @@ are distributed on the threads available (on my ordinary laptop 12) and
 local maxima are combined in the final result.
 
 The final version does the calculation in 0.52sec. This is an improvement
-of 100 million percent compared to the 8 days!
+of over 130 million percent compared to the 8 days!
 
 Can the code be improved even further?
     In terms of single thread speed the code is pretty much at the limit
