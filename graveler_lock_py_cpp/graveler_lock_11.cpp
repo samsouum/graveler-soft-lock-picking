@@ -1,38 +1,22 @@
 /*
-The purpose of this code is to simulate 1 billion simulations of 231
-D4 throws and count the occurrences of the result 1.
-
-The Idea is due to ShoddyCasts video
-https://www.youtube.com/watch?v=M8C8dHQE2Ro whose simulation took
-8 days to compute. They then challenged the viewers to improve
-upon their code.
-
-Having a little programming experience I took on this challenge with
-a few ideas on improvements. I'm honestly surprised by how much I was
-able to improve upon the initial code. Here is how it works:
-
-A single D4 throw can be considerd as the result of the generation
-of two random bits, where the result is consider a 1 if and only if
-both bits are a 1. This can be checked quickly through the and
-operation. The random numbers are generated through the well documented
-xorshift algorithm (see https://en.wikipedia.org/wiki/Xorshift, 
-https://www.reedbeta.com/blog/quick-and-easy-gpu-random-numbers-in-d3d11/).
-The way the algorithm is used here (that millions of times per thread)
-it passes all the necessary statistical tests to yield a "fair" result
-in such a simulation. The script generates 2 256-bit numbers, making
-use of AVXs as the SIMD bit-operations are extremely efficient in
-modern CPUs. The numbers are combined with an and operation and a mask
-to get rid of 25 bits yielding the 231 simulations of a D4. The function
-popcnt counts the number of positive results using the algorithm described
-in the article https://arxiv.org/pdf/1611.07612. The 1 billion simulations
-are distributed on the threads available (on my ordinary laptop 12) and
-local maxima are combined in the final result.
-
-The final version does the calculation in 0.69sec. This is an improvement
-of 100 million percent compared to the 8 days!
-
-The github repository contains all improvements including what has been
-changed between versions.
+I don't have cpp on here but I have thought of further improvements which I will have to test later.
+Improvements:
+    - The mask to remove 25 bits can be built into the bitcount function.
+    - Use the following function to sum up the results of the 64 bits.
+            __m128i sum1_low = _mm256_extracti128_si256(sum1, 0);
+            __m128i sum1_high = _mm256_extracti128_si256(sum1, 1);
+        
+            // Sum the 64-bit integers within each 128-bit half
+            __m128i sum2 = _mm_add_epi64(sum1_low, sum1_high);
+        
+            // Sum the results from the two halves
+            uint64_t val[2];
+            _mm_storeu_si128((__m128i*)val, sum2);
+            return val[0] + val[1];
+    - Different way to sum up the results: Generate 29 * 2 numbers, and them, shift one by a bit (to get
+        to 231 = 29 * 8 - 1), use the popcnt up to the last line. Store this as the "result". For each
+        result use the _mm256_max_epu8 function to get the maximum. Finally use the last line of popcnt
+        and the last 3 lines of popcnt256.
 */
 
 #include <iostream>
@@ -68,12 +52,12 @@ __m256i popcnt_epi64(__m256i v) {
     2 , 3 , 2 , 3 , 3 , 4 , 0 , 1 , 1 , 2 , 1 , 2 , 2 , 3 ,
     1 , 2 , 2 , 3 , 2 , 3 , 3 , 4) ;
     __m256i low_mask = _mm256_set1_epi8(0x0f);
-    __m256i lo = _mm256_and_si256(v,low_mask ) ;
+    __m256i lo = _mm256_and_si256(v, low_mask);
     __m256i hi = _mm256_and_si256(_mm256_srli_epi32(v, 4), low_mask);
-    __m256i popcnt1 = _mm256_shuffle_epi8 (lookup, lo);
-    __m256i popcnt2 = _mm256_shuffle_epi8 (lookup, hi);
-    __m256i total = _mm256_add_epi8 (popcnt1, popcnt2);
-    return _mm256_sad_epu8 (total, _mm256_setzero_si256());
+    __m256i popcnt1 = _mm256_shuffle_epi8(lookup, lo);
+    __m256i popcnt2 = _mm256_shuffle_epi8(lookup, hi);
+    __m256i total = _mm256_add_epi8(popcnt1, popcnt2);
+    return _mm256_sad_epu8(total, _mm256_setzero_si256());
 }
 
 int inline popcnt256(__m256i v) {
